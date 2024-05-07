@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clap = "4.5.4"
+interprocess = "2.0.1"
+
+[dev-dependencies]
+duct = "0.13.7"
+proptest = "1.4.0"
