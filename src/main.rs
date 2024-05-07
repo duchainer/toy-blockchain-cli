@@ -1,3 +1,6 @@
 fn main() {
-    println!("Hello, world!");
+    loop{}
 }
+
+#[cfg(test)]
+mod acceptance_tests;
