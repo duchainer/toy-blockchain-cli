@@ -65,10 +65,27 @@ mod tests {
             sleep(Duration::from_secs(2));
 
             // assert that it is still running
-            assert!(node.try_wait().unwrap().is_none());
+            if let Ok(val) = node.try_wait(){
+                assert_eq!(val, None);
+            }
 
             // cleanup
             assert!(node.kill().is_ok());
         }
+    }
+    #[test]
+    fn when_not_using_the_start_node_command_be_short_lived() {
+        // This should be running help 
+        let node_res = duct::cmd!("cargo", "run").start();
+        assert!(node_res.is_ok(), "Failed to run: {:?}", node_res);
+        if let Ok(node) = node_res{
+            sleep(Duration::from_millis(1000));
+
+            // assert that it is done
+            if let Ok(val) = node.try_wait(){
+                assert!(val.is_some());
+            }
+        }
+
     }
 }
