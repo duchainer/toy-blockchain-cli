@@ -75,7 +75,7 @@ mod tests {
     }
     #[test]
     fn when_not_using_the_start_node_command_be_short_lived() {
-        // This should be running help 
+        // This should be running help
         let node_res = duct::cmd!("cargo", "run").start();
         assert!(node_res.is_ok(), "Failed to run: {:?}", node_res);
         if let Ok(node) = node_res{
@@ -86,6 +86,12 @@ mod tests {
                 assert!(val.is_some());
             }
         }
+
+    }
+
+    #[test]
+    fn every_ten_seconds_start_node_should_create_a_block() {
+        let node_res = duct::cmd!("cargo", "run", "start_node").reader();
 
     }
 }
