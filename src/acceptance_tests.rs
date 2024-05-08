@@ -56,7 +56,9 @@ mod tests {
     use std::io::{BufRead, BufReader, Read};
     use std::thread::sleep;
     use std::time::Duration;
+
     use assertables::assert_contains;
+    use assertables::assert_contains_as_result;
     use super::*;
 
     #[test]
@@ -86,7 +88,7 @@ mod tests {
 
             // assert that it is done
             if let Ok(val) = node.try_wait() {
-                if (val.is_none()) {
+                if val.is_none() {
                     assert!(val.is_some());
                     let _ = node.kill().is_ok();
                 };
@@ -98,7 +100,7 @@ mod tests {
     fn every_ten_seconds_start_node_should_create_a_block() {
         let block_time_diff = 2;
         let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time_diff.to_string()).reader();
-        let mut reader = node_res.unwrap();
+        let reader = node_res.unwrap();
         // reader.kill().unwrap();
 
         // As inspired by https://stackoverflow.com/a/31577297/7243716
@@ -119,14 +121,10 @@ mod tests {
                 .chars().filter(|c| c.is_digit(10))
                 .collect::<String>().parse::<u128>().unwrap()
         }
-        output.lines()
-            .map(extract_integer_timestamp)
-            .collect::<Vec<_>>()
-            .windows(2)
-            .for_each(
-                |pair|
-                    assert_eq!((pair[0] + block_time_diff), pair[1])
-            );
+        output.lines().map(extract_integer_timestamp).collect::<Vec<_>>().windows(2).for_each(
+            |pair|
+                assert_eq!(pair[0] + block_time_diff, pair[1])
+        );
     }
 
     #[test]
