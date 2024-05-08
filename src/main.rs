@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
-const LOCAL_BLOCKCHAIN_LISTEN_ADDR: &str = "0.0.0.0:9998";
-const LOCAL_BLOCKCHAIN_ADDR: &str = "127.0.0.1:9998";
+const LOCAL_BLOCKCHAIN_LISTEN_ADDR: &str = "0.0.0.0:9997";
+const LOCAL_BLOCKCHAIN_ADDR: &str = "127.0.0.1:9997";
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None, arg_required_else_help = true)]
@@ -110,7 +110,7 @@ fn start_node(accounts: &mut HashMap<String, u128>, block_time: &str, addr: &str
                 if val > 1 {
                     let response = dbg!(process_remote_command(
                         accounts,
-                        // (serde_json::from_str(&buf)).expect("We should have received a serialized Commands"),
+                        // serde_json::from_str(&buf).expect("We should have received a serialized Commands"),
                         // TODO Figure out why comm only reads empty string
                         Commands::CreateAccount { name: "bob".to_string(), balance: 1000 },
                     ) + "\n");
@@ -148,8 +148,16 @@ fn process_remote_command(accounts: &mut HashMap<String, u128>, command: Command
             unimplemented!("We don't allow restarting the node remotely.");
         }
         Commands::CreateAccount { name, balance } => {
-            accounts.insert(name.clone(), balance);
-            format!("Created account of {} with balance {}", name, accounts.get(&name).expect("We should have inserted the account now."))
+            match accounts.insert(name.clone(), balance){
+                None => {
+                    format!("Created account of {} with balance {}",
+                            name,
+                            accounts.get(&name).expect("We should have inserted the account now."))
+                }
+                Some(balance) => {
+                    format!("Already existing account of {} with balance {}", name, balance)
+                }
+            }
         }
         Commands::Balance { name } => {
             let balance = accounts.get(&name);

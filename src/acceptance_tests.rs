@@ -148,6 +148,26 @@ mod tests {
         let node_handle = node_res.expect("The start_node command should work");
 
         let account_creation_output = duct::cmd!("cargo", "run", "create_account", "bob", balance.to_string())
+            .read().expect("The create_account command should work");
+
+        assert_contains!(account_creation_output , "Created account");
+        sleep(Duration::from_secs(block_time));
+
+        let account_creation2_output = duct::cmd!("cargo", "run", "create_account", "bob", balance.to_string())
+            .read().expect("The create_account command should work");
+
+        assert!(node_handle.kill().is_ok());
+        assert_contains!(account_creation2_output , "Already existing account");
+    }
+    #[test]
+    #[ntest::timeout(5000)] //In case the client are blocking in some way, we rather abort the test than wait.
+    fn account_creation_and_already_being_created() {
+        let block_time = 1;
+        let balance: u128 = 1000;
+        let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time.to_string()).start();
+        let node_handle = node_res.expect("The start_node command should work");
+
+        let account_creation_output = duct::cmd!("cargo", "run", "create_account", "bob", balance.to_string())
             .start().expect("The create_account command should work");
         sleep(Duration::from_secs(block_time));
         if account_creation_output.kill().is_ok() {println!("Should not be long running")}

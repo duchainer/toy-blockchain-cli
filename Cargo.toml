@@ -12,4 +12,5 @@ serde_json = "1.0.117"
 [dev-dependencies]
 assertables = "7.0.1"
 duct = "0.13.7"
+ntest = "0.9.2"
 proptest = "1.4.0"
