@@ -157,21 +157,22 @@ mod tests {
         assert!(node_handle.kill().is_ok());
         assert_contains!(account_creation2_output , "Already existing account");
     }
+    
 
     #[test]
-    #[ntest::timeout(5000
-    )] //In case the client are blocking in some way, we rather abort the test than wait.
+    //In case the client are blocking in some way, we rather abort the test than wait.
+    #[ntest::timeout(5000)] 
     fn account_creation_and_already_being_created() {
         let block_time = 1;
         let balance: u128 = 1000;
         let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time.to_string()).start();
         let node_handle = node_res.expect("The start_node command should work");
 
+        // To be sure that the node is properly started already
         sleep(Duration::from_secs(block_time));
-        // TODO Add good error message printed when giving too much arguments to it
+
         let balance_output = duct::cmd!("cargo", "run", "balance", "bob")
             .read().expect("The balance command should work");
-
 
         let account_creation_output = duct::cmd!("cargo", "run", "create_account", "bob", balance.to_string())
             .start().expect("The create_account command should work");
@@ -183,10 +184,13 @@ mod tests {
             .read().expect("The balance command should work");
 
 
+        // cleanup
         assert!(node_handle.kill().is_ok());
-        
+
+        //
+        // assertions
+        //
         assert_contains!(balance_output, "No account found");
-        
         assert_contains!(balance_output2, &balance.to_string());
         assert_not_contains!(balance_output2, &"created".to_string());
         assert_not_contains!(balance_output2, &"Already existing account".to_string());
