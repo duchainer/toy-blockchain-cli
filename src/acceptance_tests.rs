@@ -114,7 +114,7 @@ mod tests {
 
         sleep(Duration::from_secs(block_time_diff));
         sleep(Duration::from_secs(block_time_diff));
-        if let Ok(_val) = buf_reader.read_line(&mut output) { 
+        if let Ok(_val) = buf_reader.read_line(&mut output) {
             assert_contains!(output, "current_block_num: 0");
          }
 
@@ -186,7 +186,7 @@ mod tests {
         let balance_output2_before_block =
             duct::cmd!("cargo", "run", "balance", initial_account_names[1])
                 .read().expect("The create_account command should work");
-        sleep(Duration::from_secs(block_time));
+        sleep(Duration::from_secs(block_time+1));
 
         let balance_output1_after_block =
             duct::cmd!("cargo", "run", "balance", initial_account_names[0])
@@ -202,8 +202,8 @@ mod tests {
         assert_contains!(transaction_output, &"Will add this transaction in the next block".to_string());
         assert_contains!(&balance_output1_before_block, &format!(" {}",initial_accounts[0].1));
         assert_contains!(&balance_output2_before_block, &format!(" {}",initial_accounts[1].1));
-        assert_contains!(&balance_output1_after_block, &format!(" {}",initial_accounts[0].1 - transfer_amount));
         assert_contains!(&balance_output2_after_block, &format!(" {}",initial_accounts[1].1 + transfer_amount));
+        assert_contains!(&balance_output1_after_block, &format!(" {}",initial_accounts[0].1 - transfer_amount));
     }
 
     #[test]

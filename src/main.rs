@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use block_chain::BlockChain;
 
-const LOCAL_BLOCKCHAIN_LISTEN_ADDR: &str = "0.0.0.0:9996";
-const LOCAL_BLOCKCHAIN_ADDR: &str = "127.0.0.1:9996";
+const LOCAL_BLOCKCHAIN_LISTEN_ADDR: &str = "0.0.0.0:9994";
+const LOCAL_BLOCKCHAIN_ADDR: &str = "127.0.0.1:9994";
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None, arg_required_else_help = true)]
@@ -51,7 +51,7 @@ enum Commands {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Transaction {
     CreateAccount {
         /// Name of the account holder

@@ -72,15 +72,23 @@ impl BlockChain {
                             }
                         }
                     }
-                    transaction @   Transaction::Transfer {..} =>{
+                    transaction @ Transaction::Transfer { .. } => {
                         if let Err(msg) = transfer_between_accounts(&mut self.accounts, &transaction) {
-                            block.transactions.push(transaction);
                             msg
                         } else {
                             if let Transaction::Transfer { sender, receiver, balance } = &transaction {
+                                {
+                                    *self.accounts.get_mut(sender)
+                                        .expect("We always have a number in there if the key exists") -= balance
+                                }
+                                {
+                                    *self.accounts.get_mut(receiver)
+                                        .expect("We always have a number in there if the key exists") += balance
+                                }
+                                block.transactions.push(transaction.clone());
                                 format!("Successfully transferred {} from {} to {}", balance, sender, receiver)
-                            }else {
-                                format!("Wrong transaction: {:?}", transaction )
+                            } else {
+                                format!("Wrong transaction: {:?}", transaction)
                             }
                         }
                     }
