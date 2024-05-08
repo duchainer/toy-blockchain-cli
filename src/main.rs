@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::string::String;
+use std::thread;
+use std::thread::sleep;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand};
@@ -26,52 +28,61 @@ enum Commands {
     },
     #[command(name = "create_account")]
     CreateAccount {
-        // #[clap()]
         /// Name of the account holder
         name: String,
-        // #[clap()]
         /// starting balance on the account
         balance: u128,
     },
     #[command(name = "balance")]
     Balance {
-        // #[clap()]
         /// Name of the account holder
         name: String,
     },
 }
 
 
-fn main() {
+fn _main() {
     let cli = Cli::parse();
 
     let mut accounts = HashMap::<String, u128>::new();
     match &cli.command {
         Some(Commands::StartNode { block_time }) => {
-            start_node(&mut accounts, block_time, &LOCAL_BLOCKCHAIN_ADDR.to_string());
+            start_node(&mut accounts, block_time, LOCAL_BLOCKCHAIN_ADDR);
         }
         Some(command) => {
-            if let Ok(mut stream) = TcpStream::connect(LOCAL_BLOCKCHAIN_ADDR) {
-                // Not as performant as binary representation, but easier to debug
-                if let Ok(val) = stream.write(serde_json::to_string(command)
-                    .expect("The command should be well formed already").as_bytes()) {
-                    let mut buf = Vec::new();
-                    if let Ok(_val) = stream.read(&mut buf) {
-                        println!("{}", String::from_utf8(buf.into()).expect("We should have sent utf8"));
-                    }
-                }
-            }
+            ask_node(command, LOCAL_BLOCKCHAIN_ADDR);
         }
         _ => { unreachable!() }
     }
 }
 
-fn _not_main() {
-    let mut accounts = HashMap::<String, u128>::new();
-    start_node(&mut accounts, &"2".to_string(), &"127.0.0.1:8888".to_string())
+fn ask_node(command: &Commands, addr: &str) {
+    println!("{:?} sleeping", command);
+    sleep(Duration::from_secs(2));
+    println!("{:?} awoke", command);
+    if let Ok(mut stream) = TcpStream::connect(addr) {
+        // Not as performant as binary representation, but easier to debug
+        if let Ok(val) = stream.write(serde_json::to_string(command)
+            .expect("The command should be well formed already").as_bytes()) {
+            let mut buf = String::new();
+            if let Ok(_val) = stream.read_to_string(&mut buf) {
+                println!("{:?}: {}", command, String::from_utf8(buf.into()).expect("We should have sent utf8"));
+            }
+        }
+    }
 }
 
-fn start_node(mut accounts: &mut HashMap<String, u128>, block_time: &String, addr: &String) {
+fn main() {
+    let command = Commands::CreateAccount { name: "bob".to_string(), balance: 54321 };
+    thread::spawn(move || ask_node(&command, &"127.0.0.1:8888"));
+    let command = Commands::Balance { name: "bob".to_string() };
+    thread::spawn(move || ask_node(&command, &"127.0.0.1:8888"));
+    let mut accounts = HashMap::<String, u128>::new();
+    // thread::spawn(move ||start_node(&mut accounts, &"2".to_string(), &"127.0.0.1:8888"));
+    start_node(&mut accounts, &"2".to_string(), &"127.0.0.1:8888");
+}
+
+fn start_node(mut accounts: &mut HashMap<String, u128>, block_time: &String, addr: &str) {
     let block_time: u64 = block_time.parse().expect("Block time should be a number of seconds");
     assert!(block_time > 0, "Block time should be a positive number of seconds");
     let duration_between_blocks = Duration::from_secs(block_time);
@@ -88,13 +99,19 @@ fn start_node(mut accounts: &mut HashMap<String, u128>, block_time: &String, add
             let mut buf = String::new();
             let ret = stream.read_to_string(&mut buf);
             if let Ok(val) = ret {
+                println!("{:?}", dbg!( serde_json::from_str::<Commands>(&buf) ));
                 if val > 1 {
                     let response = process_remote_command(
                         &mut accounts,
-                        serde_json::from_str(&buf).expect("We should have received a serialized Commands"),
+                        dbg!( serde_json::from_str(&buf) ).expect("We should have received a serialized Commands"),
                     );
-                    if let Err(v) = stream.write(response.as_bytes()) {
-                        println!("Couldn't respond: {}", response);
+                    match stream.write(response.as_bytes()) {
+                        Err(v) => {
+                            println!("Couldn't respond: {}", response);
+                        }
+                        a => {
+                            println!("Tried to respond: {} , but {:?}", response, a);
+                        }
                     }
                 }
             }
@@ -123,14 +140,16 @@ fn process_remote_command(accounts: &mut HashMap<String, u128>, command: Command
         }
         Commands::CreateAccount { name, balance } => {
             accounts.insert(name.clone(), balance);
-            format!("Created account of {} with balance {}", name, accounts.get(&name).expect("We should have inserted the account now."))
+            dbg!(format!("Created account of {} with balance {}", name, accounts.get(&name).expect("We should have inserted the account now.")))
         }
         Commands::Balance { name } => {
             let balance = accounts.get(&name);
-            match balance {
-                Some(val) => format!("Account of {} has a balance of {}", name, val),
-                None => format!("No account found for {}", name),
-            }
+            dbg!(
+                match balance {
+                    Some(val) => format!("Account of {} has a balance of {}", name, val),
+                    None => format!("No account found for {}", name),
+                }
+            )
         }
         _ => { unreachable!() }
     }
