@@ -89,6 +89,49 @@ fn main() {
     }
 }
 
+fn start_node(block_time: &str, addr: &str) {
+    let block_time: u64 = block_time.parse().expect("Block time should be a number of seconds");
+    assert!(block_time > 0, "Block time should be a positive number of seconds");
+    // NOTE: We could have reused Commands::Transfer, but that could be bad "de-duplication"
+    // as these data structures don't serve the same purpose and could diverge in later development.
+    let (transactions_tx, transactions_rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        let mut transactions_rx = transactions_rx;
+
+        let mut block_chain = BlockChain::new(block_time);
+        let mut transfers = Vec::new();
+        loop {
+            block_chain.try_mining(&mut transactions_rx, &mut transfers);
+        }
+    });
+
+    let listener = TcpListener::bind(addr).unwrap();
+    loop {
+        if let Ok((stream, _addr)) = listener.accept() {
+            let mut stream = stream;
+            let mut buf = String::new();
+            let ret = BufReader::new(&stream).read_line(&mut buf);
+            if let Ok(val) = ret {
+                if val > 1 {
+                    let response = process_remote_command(
+                        transactions_tx.clone(),
+                        serde_json::from_str(&buf).expect("We should have received a serialized Commands"),
+                    ) + "\n";
+                    match stream.write_all(response.as_bytes()) {
+                        Err(v) => {
+                            println!("Couldn't respond: {} because {}", response, v);
+                        }
+                        a => {
+                            println!("Tried to respond: {} , and sent {:?} bytes", response, a);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn ask_node(command: &Commands, addr: &str) -> String {
     if let Ok(mut stream) = TcpStream::connect(addr) {
         // if stream.set_read_timeout(Some(Duration::from_secs(2))).is_err(){eprintln!("Could set read timeout")};
@@ -110,59 +153,6 @@ fn ask_node(command: &Commands, addr: &str) -> String {
     }
 }
 
-fn _main() {
-    let command = Commands::CreateAccount { name: "bob".to_string(), balance: 54321 };
-    thread::spawn(move || ask_node(&command, "127.0.0.1:8888"));
-    let command = Commands::Balance { name: "bob".to_string() };
-    thread::spawn(move || ask_node(&command, "127.0.0.1:8888"));
-    // thread::spawn(move ||start_node(&mut accounts, &"2".to_string(), &"127.0.0.1:8888"));
-    start_node("2", "127.0.0.1:8888");
-}
-
-fn start_node(block_time: &str, addr: &str) {
-    let block_time: u64 = block_time.parse().expect("Block time should be a number of seconds");
-    assert!(block_time > 0, "Block time should be a positive number of seconds");
-    // NOTE: We could have reused Commands::Transfer, but that would be bad "de-duplication"
-    // as these data structures don't serve the same purpose and will diverge in later development.
-    let (transactions_tx, transactions_rx) = mpsc::channel();
-
-    thread::spawn(move || {
-        let mut transactions_rx = transactions_rx;
-
-        let mut block_chain = BlockChain::new(block_time);
-        let mut transfers = Vec::new();
-        loop {
-            block_chain.try_mining(&mut transactions_rx, &mut transfers);
-        }
-    });
-
-    let listener = TcpListener::bind(addr).unwrap();
-    // listener.set_nonblocking(true).expect("We should be on a OS where TCP can be non-blocking");
-    loop {
-        if let Ok((stream, _addr)) = listener.accept() {
-            let mut stream = stream;/*.expect("The client should stay connected for at least one tick");*/
-            let mut buf = String::new();
-            let ret = BufReader::new(&stream/*.try_clone().expect("TcpStream should be cloneable")*/).read_line(&mut buf);
-            if let Ok(val) = ret {
-                eprintln!("{:?}", dbg!(serde_json::from_str::<Commands>(&buf)));
-                if val > 1 {
-                    let response = dbg!(process_remote_command(
-                        transactions_tx.clone(),
-                        serde_json::from_str(&buf).expect("We should have received a serialized Commands"),
-                    ) + "\n");
-                    match stream.write_all(response.as_bytes()) {
-                        Err(v) => {
-                            println!("Couldn't respond: {} because {}", response, v);
-                        }
-                        a => {
-                            println!("Tried to respond: {} , and sent {:?} bytes", response, a);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 fn process_remote_command(transactions_tx: mpsc::Sender<(mpsc::Sender<String>, Transaction)>, command: Commands) -> String {
     let (msg_tx, msg_rx) = mpsc::channel();
@@ -195,7 +185,6 @@ fn process_remote_command(transactions_tx: mpsc::Sender<(mpsc::Sender<String>, T
                                   }))).expect("It should stay open until we kill the whole executable");
             msg_rx.recv().expect("Should be an error message, in the worst case")
         }
-        _ => { unreachable!() }
     }
 }
 
