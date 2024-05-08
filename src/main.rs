@@ -64,9 +64,8 @@ fn ask_node(command: &Commands, addr: &str) {
         // if stream.set_read_timeout(Some(Duration::from_secs(2))).is_err(){eprintln!("Could set read timeout")};
         // if stream.set_write_timeout(Some(Duration::from_secs(2))).is_err() { eprintln!("Could set write timeout") };
         // serde::json : Not as small over-the-wire as binary representation, but easier to debug
-        if let Ok(val) = stream.write_all(dbg!( serde_json::to_string(command)
-            .expect("The command should be well formed already")+"\n" ).as_bytes()) {
-            dbg!(val);
+        if let Ok(val) = stream.write_all((serde_json::to_string(command)
+            .expect("The command should be well formed already") + "\n").as_bytes()) {
             let mut buf = String::new();
             if let Ok(_val) = BufReader::new(stream).read_line(&mut buf) {
                 println!("{:?}: {}", command, String::from_utf8(buf.into()).expect("We should have sent utf8"));
@@ -103,15 +102,15 @@ fn start_node(accounts: &mut HashMap<String, u128>, block_time: &str, addr: &str
     // listener.set_nonblocking(true).expect("We should be on a OS where TCP can be non-blocking");
     loop {
         if let Ok((stream, _addr)) = listener.accept() {
-            let mut stream = dbg!(stream);/*.expect("The client should stay connected for at least one tick");*/
+            let mut stream = stream;/*.expect("The client should stay connected for at least one tick");*/
             let mut buf = String::new();
-            let ret = dbg!(BufReader::new(&stream/*.try_clone().expect("TcpStream should be cloneable")*/).read_line(&mut buf));
+            let ret = BufReader::new(&stream/*.try_clone().expect("TcpStream should be cloneable")*/).read_line(&mut buf);
             if let Ok(val) = ret {
                 println!("{:?}", dbg!(serde_json::from_str::<Commands>(&buf)));
                 if val > 1 {
                     let response = dbg!(process_remote_command(
                         accounts,
-                        // dbg!(serde_json::from_str(&buf)).expect("We should have received a serialized Commands"),
+                        // (serde_json::from_str(&buf)).expect("We should have received a serialized Commands"),
                         // TODO Figure out why comm only reads empty string
                         Commands::CreateAccount { name: "bob".to_string(), balance: 1000 },
                     ) + "\n");
@@ -150,16 +149,14 @@ fn process_remote_command(accounts: &mut HashMap<String, u128>, command: Command
         }
         Commands::CreateAccount { name, balance } => {
             accounts.insert(name.clone(), balance);
-            dbg!(format!("Created account of {} with balance {}", name, accounts.get(&name).expect("We should have inserted the account now.")))
+            format!("Created account of {} with balance {}", name, accounts.get(&name).expect("We should have inserted the account now."))
         }
         Commands::Balance { name } => {
             let balance = accounts.get(&name);
-            dbg!(
-                match balance {
-                    Some(val) => format!("Account of {} has a balance of {}", name, val),
-                    None => format!("No account found for {}", name),
-                }
-            )
+            match balance {
+                Some(val) => format!("Account of {} has a balance of {}", name, val),
+                None => format!("No account found for {}", name),
+            }
         }
         _ => { unreachable!() }
     }
