@@ -2,11 +2,13 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::string::String;
+use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
+
+use block_chain::BlockChain;
 
 const LOCAL_BLOCKCHAIN_LISTEN_ADDR: &str = "0.0.0.0:9996";
 const LOCAL_BLOCKCHAIN_ADDR: &str = "127.0.0.1:9996";
@@ -31,7 +33,7 @@ enum Commands {
         /// Name of the account holder
         name: String,
         /// starting balance on the account
-        balance: u128,
+        balance: u64,
     },
     #[command(name = "balance")]
     Balance {
@@ -45,18 +47,38 @@ enum Commands {
         /// Name of the receiving account holder
         receiver: String,
         /// starting balance on the account
-        balance: u128,
+        balance: u64,
     },
 }
 
+#[derive(Debug)]
+enum Transaction {
+    CreateAccount {
+        /// Name of the account holder
+        name: String,
+        /// starting balance on the account
+        balance: u64,
+    },
+    Transfer {
+        /// Name of the sending account holder
+        sender: String,
+        /// Name of the receiving account holder
+        receiver: String,
+        /// starting balance on the account
+        balance: u64,
+    },
+    Balance{
+        /// Name of the account holder
+        name: String,
+    }
+}
 
 fn main() {
     let cli = Cli::parse();
 
-    let mut accounts = HashMap::<String, u128>::new();
     match &cli.command {
         Some(Commands::StartNode { block_time }) => {
-            start_node(&mut accounts, block_time, LOCAL_BLOCKCHAIN_LISTEN_ADDR);
+            start_node(block_time, LOCAL_BLOCKCHAIN_LISTEN_ADDR);
         }
         Some(command) => {
             println!("{}", ask_node(command, LOCAL_BLOCKCHAIN_ADDR));
@@ -66,9 +88,6 @@ fn main() {
 }
 
 fn ask_node(command: &Commands, addr: &str) -> String {
-    // println!("{:?} sleeping", command);
-    // sleep(Duration::from_secs(2));
-    // println!("{:?} awoke", command);
     if let Ok(mut stream) = TcpStream::connect(addr) {
         // if stream.set_read_timeout(Some(Duration::from_secs(2))).is_err(){eprintln!("Could set read timeout")};
         // if stream.set_write_timeout(Some(Duration::from_secs(2))).is_err() { eprintln!("Could set write timeout") };
@@ -94,22 +113,23 @@ fn _main() {
     thread::spawn(move || ask_node(&command, "127.0.0.1:8888"));
     let command = Commands::Balance { name: "bob".to_string() };
     thread::spawn(move || ask_node(&command, "127.0.0.1:8888"));
-    let mut accounts = HashMap::<String, u128>::new();
     // thread::spawn(move ||start_node(&mut accounts, &"2".to_string(), &"127.0.0.1:8888"));
-    start_node(&mut accounts, "2", "127.0.0.1:8888");
+    start_node( "2", "127.0.0.1:8888");
 }
 
-fn start_node(accounts: &mut HashMap<String, u128>, block_time: &str, addr: &str) {
+fn start_node(block_time: &str, addr: &str) {
     let block_time: u64 = block_time.parse().expect("Block time should be a number of seconds");
     assert!(block_time > 0, "Block time should be a positive number of seconds");
-    thread::spawn(move || {
-        let duration_between_blocks = Duration::from_secs(block_time);
+    // NOTE: We could have reused Commands::Transfer, but that would be bad "de-duplication"
+    // as these data structures don't serve the same purpose and will diverge in later development.
+    let (transactions_tx, transactions_rx) = mpsc::channel();
 
-        let node_start_instant = Instant::now();
-        let mut last_mining_time = Instant::now();
-        let mut current_block_num = 0u128;
+    thread::spawn(move || {
+        let mut transactions_rx = transactions_rx;
+
+        let mut block_chain = BlockChain::new(block_time);
         loop {
-            try_mining(duration_between_blocks, &node_start_instant, &mut last_mining_time, &mut current_block_num);
+            block_chain.try_mining(&mut transactions_rx);
         }
     });
 
@@ -124,10 +144,8 @@ fn start_node(accounts: &mut HashMap<String, u128>, block_time: &str, addr: &str
                 eprintln!("{:?}", dbg!(serde_json::from_str::<Commands>(&buf)));
                 if val > 1 {
                     let response = dbg!(process_remote_command(
-                        accounts,
+                        transactions_tx.clone(),
                         serde_json::from_str(&buf).expect("We should have received a serialized Commands"),
-                        // TODO Figure out why comm only reads empty string
-                        // Commands::CreateAccount { name: "bob".to_string(), balance: 1000 },
                     ) + "\n");
                     match stream.write_all(response.as_bytes()) {
                         Err(v) => {
@@ -143,62 +161,37 @@ fn start_node(accounts: &mut HashMap<String, u128>, block_time: &str, addr: &str
     }
 }
 
-fn try_mining(duration_between_blocks: Duration, node_start_instant: &Instant, last_mining_time: &mut Instant, current_block_num: &mut u128) {
-    let current_time = Instant::now();
-    if current_time.duration_since(*last_mining_time) > duration_between_blocks {
-        println!("{:.0?}: created block {} with content: {:#?}",
-                 current_time.duration_since(*node_start_instant),
-                 current_block_num,
-                 ""
-        );
-        *current_block_num += 1;
-        *last_mining_time = Instant::now();
-    }
-}
-
-fn process_remote_command(accounts: &mut HashMap<String, u128>, command: Commands) -> String {
+fn process_remote_command(transactions_tx: mpsc::Sender<(mpsc::Sender<String>, Transaction)>,  command: Commands) -> String {
+    let (msg_tx, msg_rx) = mpsc::channel();
     match command {
         Commands::StartNode { block_time: _ } => {
             println!("We shouldn't receive that remotely");
             unimplemented!("We don't allow restarting the node remotely.");
         }
         Commands::CreateAccount { name, balance } => {
-            match accounts.insert(name.clone(), balance) {
-                None => {
-                    format!("Created account of {} with balance {}",
-                            name,
-                            accounts.get(&name).expect("We should have inserted the account now."))
-                }
-                Some(balance) => {
-                    format!("Already existing account of {} with balance {}", name, balance)
-                }
-            }
+            transactions_tx.send((msg_tx,
+                                  Transaction::CreateAccount {
+                                      name,
+                                      balance,
+                                  })).expect("It should stay open until we kill the whole executable");
+            msg_rx.recv().expect("Should be an error message, in the worst case")
         }
         Commands::Balance { name } => {
-            let balance = accounts.get(&name);
-            match balance {
-                Some(val) => format!("Account of {} has a balance of {}", name, val),
-                None => format!("No account found for {}", name),
-            }
+            transactions_tx.send((msg_tx,
+                                  Transaction::Balance {
+                                      name,
+                                  })).expect("It should stay open until we kill the whole executable");
+            msg_rx.recv().expect("Should be an error message, in the worst case")
+            
         }
-        Commands::Transfer { sender, receiver, balance } => {
-            if let Some(sender_balance) = accounts.get_mut(&sender)  {
-               if *sender_balance >= balance{
-                   // NOTE In a real system, we would use atomic operations/transaction
-                   *sender_balance -= balance;
-                   if let Some(receiver_balance)  = accounts.get_mut(&receiver){
-                       *receiver_balance += balance;
-                       return format!("Successfully transfered {} from {} to {}", balance, sender, receiver);
-                   }else{
-                       *accounts.get_mut(&sender).expect("It existed a few statement ago") -= balance;
-                   }
-               }
-            }
-            return format!("Failed to transfer {} from {} to {}", balance, sender, receiver);
+        command @ Commands::Transfer { .. } => {
+            return format!("Will add this transaction in the next block: {:?}", &command);
         }
         _ => { unreachable!() }
     }
 }
 
+
 #[cfg(test)]
 mod acceptance_tests;
+mod block_chain;
