@@ -142,7 +142,7 @@ fn transfer_between_accounts(accounts: &mut HashMap<String, u64>, t: &Transactio
                 *receiver_balance += t.balance;
                 return Ok(());
             } else {
-                *accounts.get_mut(&t.sender).expect("It existed a few statement ago") -= t.balance;
+                *accounts.get_mut(&t.sender).expect("It existed a few statement ago") += t.balance;
             }
         }
     }
