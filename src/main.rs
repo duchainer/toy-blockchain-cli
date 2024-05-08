@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
-const LOCAL_BLOCKCHAIN_LISTEN_ADDR: &str = "0.0.0.0:9997";
-const LOCAL_BLOCKCHAIN_ADDR: &str = "127.0.0.1:9997";
+const LOCAL_BLOCKCHAIN_LISTEN_ADDR: &str = "0.0.0.0:9996";
+const LOCAL_BLOCKCHAIN_ADDR: &str = "127.0.0.1:9996";
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None, arg_required_else_help = true)]
@@ -37,6 +37,15 @@ enum Commands {
     Balance {
         /// Name of the account holder
         name: String,
+    },
+    #[command(name = "transfer")]
+    Transfer {
+        /// Name of the sending account holder
+        sender: String,
+        /// Name of the receiving account holder
+        receiver: String,
+        /// starting balance on the account
+        balance: u128,
     },
 }
 
@@ -69,13 +78,13 @@ fn ask_node(command: &Commands, addr: &str) -> String {
             let mut buf = String::new();
             if let Ok(_val) = BufReader::new(stream).read_line(&mut buf) {
                 format!("{:?}: {}", command, String::from_utf8(buf.into()).expect("We should have sent utf8"))
-            }else{
+            } else {
                 "Could not read from server sending the command".to_string()
             }
-        }else{
+        } else {
             "Could not write to server after initial connection".to_string()
         }
-    }else{
+    } else {
         "Could not connect to server".to_string()
     }
 }
@@ -154,7 +163,7 @@ fn process_remote_command(accounts: &mut HashMap<String, u128>, command: Command
             unimplemented!("We don't allow restarting the node remotely.");
         }
         Commands::CreateAccount { name, balance } => {
-            match accounts.insert(name.clone(), balance){
+            match accounts.insert(name.clone(), balance) {
                 None => {
                     format!("Created account of {} with balance {}",
                             name,
@@ -171,6 +180,21 @@ fn process_remote_command(accounts: &mut HashMap<String, u128>, command: Command
                 Some(val) => format!("Account of {} has a balance of {}", name, val),
                 None => format!("No account found for {}", name),
             }
+        }
+        Commands::Transfer { sender, receiver, balance } => {
+            if let Some(sender_balance) = accounts.get_mut(&sender)  {
+               if *sender_balance >= balance{
+                   // NOTE In a real system, we would use atomic operations/transaction
+                   *sender_balance -= balance;
+                   if let Some(receiver_balance)  = accounts.get_mut(&receiver){
+                       *receiver_balance += balance;
+                       return format!("Successfully transfered {} from {} to {}", balance, sender, receiver);
+                   }else{
+                       *accounts.get_mut(&sender).expect("It existed a few statement ago") -= balance;
+                   }
+               }
+            }
+            return format!("Failed to transfer {} from {} to {}", balance, sender, receiver);
         }
         _ => { unreachable!() }
     }
