@@ -9,6 +9,11 @@ use serde::{Deserialize, Serialize};
 
 use block_chain::BlockChain;
 
+mod block_chain;
+
+#[cfg(test)]
+mod acceptance_tests;
+
 const LOCAL_BLOCKCHAIN_LISTEN_ADDR: &str = "0.0.0.0:9966";
 const LOCAL_BLOCKCHAIN_ADDR: &str = "127.0.0.1:9966";
 
@@ -22,12 +27,17 @@ struct Cli {
 #[derive(Subcommand, Serialize, Deserialize, Debug)]
 enum Commands {
     #[command(name = "start_node")]
+    /// Starts a new local blockchain, that mines a block every `block_time` (default 10s).
+    /// -- NOTE: For now, we use a single hardcoded address for the start_node.
+    ///       - So you'll need to un only a single one, or you'll see a "Address already in use" error
     StartNode {
         #[clap(long, default_value = "10")]
         /// Seconds between each block
         block_time: String,
     },
     #[command(name = "create_account")]
+    /// Creates a new account with an initial balance
+    /// Is a no-op if the account already exists, you'll just get an error message
     CreateAccount {
         /// Name of the account holder
         name: String,
@@ -35,11 +45,14 @@ enum Commands {
         balance: u64,
     },
     #[command(name = "balance")]
+    /// Returns the balance of the account, if it exists
     Balance {
         /// Name of the account holder
         name: String,
     },
     #[command(name = "transfer")]
+    /// Ask for a token transfer stored in the next mined block
+    /// It will check twice if the transaction is valid, since balance can change
     Transfer {
         /// Name of the sending account holder
         sender: String,
@@ -188,7 +201,3 @@ fn process_remote_command(transactions_tx: mpsc::Sender<(mpsc::Sender<String>, T
     }
 }
 
-
-#[cfg(test)]
-mod acceptance_tests;
-mod block_chain;
