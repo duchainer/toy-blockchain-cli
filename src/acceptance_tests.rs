@@ -148,6 +148,8 @@ mod tests {
         let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time.to_string()).start();
         let node_handle = node_res.expect("The start_node command should work");
 
+        sleep(Duration::from_secs(block_time));
+        sleep(Duration::from_secs(block_time));
         let account_creation_output = duct::cmd!("cargo", "run", "create_account", "bob", balance.to_string())
             .read().expect("The create_account command should work");
 
@@ -163,11 +165,13 @@ mod tests {
 
     #[test]
     fn transactions() {
-        let block_time = 1;
+        let block_time = 2;
         // let balance: u128 = 1000;
         let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time.to_string()).start();
         let node_handle = node_res.expect("The start_node command should work");
 
+        sleep(Duration::from_secs(block_time));
+        sleep(Duration::from_secs(block_time));
         let initial_accounts = [("alice", 1000), ("bob", 9000)];
         let initial_account_names = initial_accounts.map(|(name, _)| name);
         let account_creation_outputs = initial_accounts.map(|account|
@@ -178,22 +182,22 @@ mod tests {
         let transfer_amount = 1000;
         let transaction_output =
             duct::cmd!("cargo", "run", "transfer", initial_account_names[0], initial_account_names[1], transfer_amount.to_string())
-                .read().expect("The create_account command should work");
+                .read().expect("The transfer command should work");
 
         let balance_output1_before_block =
             duct::cmd!("cargo", "run", "balance", initial_account_names[0])
-                .read().expect("The create_account command should work");
+                .read().expect("The balance command should work");
         let balance_output2_before_block =
             duct::cmd!("cargo", "run", "balance", initial_account_names[1])
-                .read().expect("The create_account command should work");
+                .read().expect("The balance command should work");
         sleep(Duration::from_secs(block_time+1));
 
         let balance_output1_after_block =
             duct::cmd!("cargo", "run", "balance", initial_account_names[0])
-                .read().expect("The create_account command should work");
+                .read().expect("The balance command should work");
         let balance_output2_after_block =
             duct::cmd!("cargo", "run", "balance", initial_account_names[1])
-                .read().expect("The create_account command should work");
+                .read().expect("The balance command should work");
 
         assert!(node_handle.kill().is_ok());
         account_creation_outputs.iter().for_each(
@@ -241,42 +245,5 @@ mod tests {
         assert_contains!(balance_output2, &balance.to_string());
         assert_not_contains!(balance_output2, &"created".to_string());
         assert_not_contains!(balance_output2, &"Already existing account".to_string());
-    }
-}
-
-#[cfg(test)]
-mod integration_tests {
-    use std::collections::HashMap;
-    use std::process::exit;
-    use std::thread;
-    use std::thread::sleep;
-    use std::time::Duration;
-
-    use assertables::assert_contains;
-    use assertables::assert_contains_as_result;
-
-    use crate::{ask_node, Commands, start_node};
-
-    #[test]
-    #[ignore]
-    fn use_threads_to_debug_server_client_empty_messages() {
-        // let mut handles =Vec::<JoinHandle<()>>::new();
-        let balance = 54321;
-        let command = Commands::CreateAccount { name: "bob".to_string(), balance };
-        thread::spawn(move || {
-            sleep(Duration::from_secs(2));
-            assert_contains!(ask_node(&command, "127.0.0.1:8888"), "Created account");
-        });
-        let command = Commands::Balance { name: "bob".to_string() };
-        thread::spawn(move || {
-            sleep(Duration::from_secs(3));
-            assert_contains!(ask_node(&command, "127.0.0.1:8888"), &balance.to_string());
-        });
-        // thread::spawn(move ||start_node(&mut accounts, &"2".to_string(), &"127.0.0.1:8888"));
-        thread::spawn(move || {
-            start_node("2", "0.0.0.0:8888");
-        });
-        sleep(Duration::from_secs(10));
-        exit(0);
     }
 }
