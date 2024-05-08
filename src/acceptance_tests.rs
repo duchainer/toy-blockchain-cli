@@ -1,4 +1,3 @@
-use super::*;
 
 /*
 Voici notre test Rust:
@@ -58,18 +57,20 @@ mod tests {
 
     use assertables::assert_contains;
     use assertables::assert_contains_as_result;
+    use std::string::String;
     use super::*;
 
     #[test]
     fn running_with_start_node_keeps_me_running() {
+        let minimum_living_time = 2;
         let node_res = duct::cmd!("cargo", "run", "start_node").start();
         assert!(node_res.is_ok(), "Failed to run: {:?}", node_res);
         if let Ok(node) = node_res {
-            sleep(Duration::from_secs(2));
+            sleep(Duration::from_secs(minimum_living_time));
 
             // assert that it is still running
             if let Ok(val) = node.try_wait() {
-                assert_eq!(val, None);
+                assert!(val.is_none(), "The node stopped running under {} seconds", minimum_living_time);
             }
 
             // cleanup
@@ -83,20 +84,22 @@ mod tests {
         let node_res = duct::cmd!("cargo", "run").start();
         assert!(node_res.is_ok(), "Failed to run: {:?}", node_res);
         if let Ok(node) = node_res {
-            sleep(Duration::from_millis(1000));
+            sleep(Duration::from_millis(1500));
 
-            // assert that it is done
             if let Ok(val) = node.try_wait() {
                 if val.is_none() {
-                    assert!(val.is_some());
+                    assert!(val.is_some(), "It was not done yet?");
                     let _ = node.kill().is_ok();
                 };
             }
         }
     }
 
+    // NOTE: HACK: For now, you'll want to run tests using `cargo test -- --test-threads 1`
+    // Because we don't want other tests to send requests to the other tests start_node
+    // TODO Find a better way
     #[test]
-    fn every_ten_seconds_start_node_should_create_a_block() {
+    fn every_n_seconds_start_node_should_create_a_block() {
         let block_time_diff = 2;
         let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time_diff.to_string()).reader();
         let reader = node_res.unwrap();
@@ -106,19 +109,30 @@ mod tests {
         let mut buf_reader = BufReader::new(reader);
         let mut output = String::new();
 
+        // sleep(Duration::from_secs(block_time_diff));
+        // // Throwing away the "listening started, ready to accept\n"
+        // buf_reader.read_line(&mut output).unwrap();
+        // output = String::new();
+
+        sleep(Duration::from_secs(block_time_diff));
+        sleep(Duration::from_secs(block_time_diff));
         buf_reader.read_line(&mut output).unwrap();
         assert_contains!(output, "block 0");
+
+        sleep(Duration::from_secs(block_time_diff));
         buf_reader.read_line(&mut output).unwrap();
         assert_contains!(output, "block 1");
+
+        sleep(Duration::from_secs(block_time_diff));
         buf_reader.read_line(&mut output).unwrap();
         assert_contains!(output, "block 2");
         assert!(buf_reader.into_inner().kill().is_ok());
 
 
-        fn extract_integer_timestamp(line: &str) -> u128 {
+        fn extract_integer_timestamp(line: &str) -> u64 {
             line.split(" ").take(1).collect::<String>()
                 .chars().filter(|c| c.is_digit(10))
-                .collect::<String>().parse::<u128>().unwrap()
+                .collect::<String>().parse::<u64>().unwrap()
         }
         output.lines().map(extract_integer_timestamp).collect::<Vec<_>>().windows(2).for_each(
             |pair|
@@ -128,7 +142,30 @@ mod tests {
 
     #[test]
     fn account_creation_and_balance() {
-        let node_res = duct::cmd!("cargo", "run", "start_node").reader();
+        let block_time = 1;
+        let balance: u128 = 1000;
+        let node_res = duct::cmd!("cargo", "run", "start_node", "--block_time", block_time.to_string()).start();
+        let node_handle = node_res.expect("The start_node command should work");
 
+        let account_creation_output = duct::cmd!("cargo", "run", "create_account", "bob", balance.to_string())
+            .read().expect("The create_account command should work");
+
+        // TODO Add good error message printed when giving too much arguments to it
+        // let balance_output = duct::cmd!("cargo", "run", "balance", "bob", balance.to_string())
+        //     .read().;
+
+        // let balance_output = duct::cmd!("cargo", "run", "balance", "bob")
+        //     .read().expect("The balance command should work");
+        //
+        // assert_contains!(balance_output, "No account");
+
+        sleep(Duration::from_secs(block_time));
+
+        let balance_output = duct::cmd!("cargo", "run", "balance", "bob")
+            .read().expect("The balance command should work");
+
+        assert_contains!(balance_output, &balance.to_string());
+
+        assert!(node_handle.kill().is_ok());
     }
 }
