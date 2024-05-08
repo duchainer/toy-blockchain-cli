@@ -144,11 +144,13 @@ mod tests {
     fn account_creation_and_balance() {
         let block_time = 1;
         let balance: u128 = 1000;
-        let node_res = duct::cmd!("cargo", "run", "start_node", "--block_time", block_time.to_string()).start();
+        let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time.to_string()).start();
         let node_handle = node_res.expect("The start_node command should work");
 
         let account_creation_output = duct::cmd!("cargo", "run", "create_account", "bob", balance.to_string())
-            .read().expect("The create_account command should work");
+            .start().expect("The create_account command should work");
+        sleep(Duration::from_secs(block_time));
+        if account_creation_output.kill().is_ok() {println!("Should not be long running")}
 
         // TODO Add good error message printed when giving too much arguments to it
         // let balance_output = duct::cmd!("cargo", "run", "balance", "bob", balance.to_string())
@@ -164,8 +166,10 @@ mod tests {
         let balance_output = duct::cmd!("cargo", "run", "balance", "bob")
             .read().expect("The balance command should work");
 
-        assert_contains!(balance_output, &balance.to_string());
+        sleep(Duration::from_secs(block_time));
+        if account_creation_output.kill().is_ok() {println!("Should not be long running")}
 
         assert!(node_handle.kill().is_ok());
+        assert_contains!(balance_output, &balance.to_string());
     }
 }
