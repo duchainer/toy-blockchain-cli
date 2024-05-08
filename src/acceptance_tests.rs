@@ -52,7 +52,6 @@ Cheers
 */
 #[cfg(test)]
 mod tests {
-    use assertables::assert_contains_as_result;
     use std::io::{BufRead, BufReader, Read};
     use std::thread::sleep;
     use std::time::Duration;
