@@ -50,13 +50,13 @@ fn main() {
             start_node(&mut accounts, block_time, LOCAL_BLOCKCHAIN_LISTEN_ADDR);
         }
         Some(command) => {
-            ask_node(command, LOCAL_BLOCKCHAIN_ADDR);
+            println!("{}", ask_node(command, LOCAL_BLOCKCHAIN_ADDR));
         }
         _ => { unreachable!() }
     }
 }
 
-fn ask_node(command: &Commands, addr: &str) {
+fn ask_node(command: &Commands, addr: &str) -> String {
     // println!("{:?} sleeping", command);
     // sleep(Duration::from_secs(2));
     // println!("{:?} awoke", command);
@@ -68,9 +68,15 @@ fn ask_node(command: &Commands, addr: &str) {
             .expect("The command should be well formed already") + "\n").as_bytes()) {
             let mut buf = String::new();
             if let Ok(_val) = BufReader::new(stream).read_line(&mut buf) {
-                println!("{:?}: {}", command, String::from_utf8(buf.into()).expect("We should have sent utf8"));
+                format!("{:?}: {}", command, String::from_utf8(buf.into()).expect("We should have sent utf8"))
+            }else{
+                "Could not read from server sending the command".to_string()
             }
+        }else{
+            "Could not write to server after initial connection".to_string()
         }
+    }else{
+        "Could not connect to server".to_string()
     }
 }
 
@@ -106,13 +112,13 @@ fn start_node(accounts: &mut HashMap<String, u128>, block_time: &str, addr: &str
             let mut buf = String::new();
             let ret = BufReader::new(&stream/*.try_clone().expect("TcpStream should be cloneable")*/).read_line(&mut buf);
             if let Ok(val) = ret {
-                println!("{:?}", dbg!(serde_json::from_str::<Commands>(&buf)));
+                eprintln!("{:?}", dbg!(serde_json::from_str::<Commands>(&buf)));
                 if val > 1 {
                     let response = dbg!(process_remote_command(
                         accounts,
-                        // serde_json::from_str(&buf).expect("We should have received a serialized Commands"),
+                        serde_json::from_str(&buf).expect("We should have received a serialized Commands"),
                         // TODO Figure out why comm only reads empty string
-                        Commands::CreateAccount { name: "bob".to_string(), balance: 1000 },
+                        // Commands::CreateAccount { name: "bob".to_string(), balance: 1000 },
                     ) + "\n");
                     match stream.write_all(response.as_bytes()) {
                         Err(v) => {

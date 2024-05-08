@@ -1,4 +1,3 @@
-
 /*
 Voici notre test Rust:
 
@@ -52,13 +51,12 @@ Cheers
 #[cfg(test)]
 mod tests {
     use std::io::{BufRead, BufReader, Read};
+    use std::string::String;
     use std::thread::sleep;
     use std::time::Duration;
 
-    use assertables::assert_contains;
-    use assertables::assert_contains_as_result;
-    use std::string::String;
-    use super::*;
+    use assertables::{assert_contains, assert_not_contains};
+    use assertables::{assert_contains_as_result, assert_not_contains_as_result};
 
     #[test]
     fn running_with_start_node_keeps_me_running() {
@@ -159,37 +157,75 @@ mod tests {
         assert!(node_handle.kill().is_ok());
         assert_contains!(account_creation2_output , "Already existing account");
     }
+
     #[test]
-    #[ntest::timeout(5000)] //In case the client are blocking in some way, we rather abort the test than wait.
+    #[ntest::timeout(5000
+    )] //In case the client are blocking in some way, we rather abort the test than wait.
     fn account_creation_and_already_being_created() {
         let block_time = 1;
         let balance: u128 = 1000;
         let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time.to_string()).start();
         let node_handle = node_res.expect("The start_node command should work");
 
-        let account_creation_output = duct::cmd!("cargo", "run", "create_account", "bob", balance.to_string())
-            .start().expect("The create_account command should work");
         sleep(Duration::from_secs(block_time));
-        if account_creation_output.kill().is_ok() {println!("Should not be long running")}
-
         // TODO Add good error message printed when giving too much arguments to it
-        // let balance_output = duct::cmd!("cargo", "run", "balance", "bob", balance.to_string())
-        //     .read().;
-
-        // let balance_output = duct::cmd!("cargo", "run", "balance", "bob")
-        //     .read().expect("The balance command should work");
-        //
-        // assert_contains!(balance_output, "No account");
-
-        sleep(Duration::from_secs(block_time));
-
         let balance_output = duct::cmd!("cargo", "run", "balance", "bob")
             .read().expect("The balance command should work");
 
+
+        let account_creation_output = duct::cmd!("cargo", "run", "create_account", "bob", balance.to_string())
+            .start().expect("The create_account command should work");
+
         sleep(Duration::from_secs(block_time));
-        if account_creation_output.kill().is_ok() {println!("Should not be long running")}
+        if account_creation_output.kill().is_ok() { println!("Should not be long running") }
+
+        let balance_output2 = duct::cmd!("cargo", "run", "balance", "bob")
+            .read().expect("The balance command should work");
+
 
         assert!(node_handle.kill().is_ok());
-        assert_contains!(balance_output, &balance.to_string());
+        
+        assert_contains!(balance_output, "No account found");
+        
+        assert_contains!(balance_output2, &balance.to_string());
+        assert_not_contains!(balance_output2, &"created".to_string());
+        assert_not_contains!(balance_output2, &"Already existing account".to_string());
+    }
+}
+
+#[cfg(test)]
+mod integration_tests {
+    use std::collections::HashMap;
+    use std::process::exit;
+    use std::thread;
+    use std::thread::{JoinHandle, sleep};
+    use std::time::Duration;
+    use assertables::{assert_contains, assert_not_contains};
+    use assertables::{assert_contains_as_result, assert_not_contains_as_result};
+
+    use crate::{ask_node, Commands, start_node};
+
+    #[test]
+    #[ignore]
+    fn use_threads_to_debug_server_client_empty_messages() {
+        // let mut handles =Vec::<JoinHandle<()>>::new();
+        let balance= 54321;
+        let command = Commands::CreateAccount { name: "bob".to_string(), balance };
+            thread::spawn(move || {
+                sleep(Duration::from_secs(2));
+                assert_contains!(ask_node(&command, "127.0.0.1:8888"), "Created account");
+            });
+        let command = Commands::Balance { name: "bob".to_string() };
+        thread::spawn(move || {
+                sleep(Duration::from_secs(3));
+                assert_contains!(ask_node(&command, "127.0.0.1:8888"), &balance.to_string());
+            });
+        let mut accounts = HashMap::<String, u128>::new();
+        // thread::spawn(move ||start_node(&mut accounts, &"2".to_string(), &"127.0.0.1:8888"));
+        thread::spawn(move || {
+            start_node(&mut accounts, "2", "0.0.0.0:8888");
+        });
+        sleep(Duration::from_secs(10));
+        exit(0);
     }
 }
