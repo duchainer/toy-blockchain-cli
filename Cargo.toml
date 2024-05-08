@@ -8,5 +8,6 @@ clap = { version = "4.5.4", features = ["derive"] }
 interprocess = "2.0.1"
 
 [dev-dependencies]
+assertables = "7.0.1"
 duct = "0.13.7"
 proptest = "1.4.0"
