@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::string::String;
@@ -10,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use block_chain::BlockChain;
 
-const LOCAL_BLOCKCHAIN_LISTEN_ADDR: &str = "0.0.0.0:9994";
-const LOCAL_BLOCKCHAIN_ADDR: &str = "127.0.0.1:9994";
+const LOCAL_BLOCKCHAIN_LISTEN_ADDR: &str = "0.0.0.0:9966";
+const LOCAL_BLOCKCHAIN_ADDR: &str = "127.0.0.1:9966";
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None, arg_required_else_help = true)]
@@ -52,6 +51,16 @@ enum Commands {
 }
 
 #[derive(Debug, Clone)]
+struct TransactionTransfer {
+    /// Name of the sending account holder
+    pub sender: String,
+    /// Name of the receiving account holder
+    pub receiver: String,
+    /// starting balance on the account
+    pub balance: u64,
+}
+
+#[derive(Debug, Clone)]
 enum Transaction {
     CreateAccount {
         /// Name of the account holder
@@ -59,18 +68,11 @@ enum Transaction {
         /// starting balance on the account
         balance: u64,
     },
-    Transfer {
-        /// Name of the sending account holder
-        sender: String,
-        /// Name of the receiving account holder
-        receiver: String,
-        /// starting balance on the account
-        balance: u64,
-    },
-    Balance{
+    Transfer(TransactionTransfer),
+    Balance {
         /// Name of the account holder
         name: String,
-    }
+    },
 }
 
 fn main() {
@@ -114,7 +116,7 @@ fn _main() {
     let command = Commands::Balance { name: "bob".to_string() };
     thread::spawn(move || ask_node(&command, "127.0.0.1:8888"));
     // thread::spawn(move ||start_node(&mut accounts, &"2".to_string(), &"127.0.0.1:8888"));
-    start_node( "2", "127.0.0.1:8888");
+    start_node("2", "127.0.0.1:8888");
 }
 
 fn start_node(block_time: &str, addr: &str) {
@@ -128,8 +130,9 @@ fn start_node(block_time: &str, addr: &str) {
         let mut transactions_rx = transactions_rx;
 
         let mut block_chain = BlockChain::new(block_time);
+        let mut transfers = Vec::new();
         loop {
-            block_chain.try_mining(&mut transactions_rx);
+            block_chain.try_mining(&mut transactions_rx, &mut transfers);
         }
     });
 
@@ -161,7 +164,7 @@ fn start_node(block_time: &str, addr: &str) {
     }
 }
 
-fn process_remote_command(transactions_tx: mpsc::Sender<(mpsc::Sender<String>, Transaction)>,  command: Commands) -> String {
+fn process_remote_command(transactions_tx: mpsc::Sender<(mpsc::Sender<String>, Transaction)>, command: Commands) -> String {
     let (msg_tx, msg_rx) = mpsc::channel();
     match command {
         Commands::StartNode { block_time: _ } => {
@@ -182,10 +185,15 @@ fn process_remote_command(transactions_tx: mpsc::Sender<(mpsc::Sender<String>, T
                                       name,
                                   })).expect("It should stay open until we kill the whole executable");
             msg_rx.recv().expect("Should be an error message, in the worst case")
-            
         }
-        command @ Commands::Transfer { .. } => {
-            return format!("Will add this transaction in the next block: {:?}", &command);
+        Commands::Transfer { sender, receiver, balance } => {
+            transactions_tx.send((msg_tx,
+                                  Transaction::Transfer(TransactionTransfer {
+                                      sender,
+                                      receiver,
+                                      balance,
+                                  }))).expect("It should stay open until we kill the whole executable");
+            msg_rx.recv().expect("Should be an error message, in the worst case")
         }
         _ => { unreachable!() }
     }
