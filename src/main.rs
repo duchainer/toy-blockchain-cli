@@ -3,8 +3,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::string::String;
 use std::thread;
-use std::thread::sleep;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -87,8 +86,13 @@ fn start_node(mut accounts: &mut HashMap<String, u128>, block_time: &String, add
     assert!(block_time > 0, "Block time should be a positive number of seconds");
     let duration_between_blocks = Duration::from_secs(block_time);
 
-    let mut last_mining_time = SystemTime::UNIX_EPOCH;
-    let mut current_block_num = 0u128;
+        let node_start_instant = Instant::now();
+        let mut last_mining_time = Instant::now();
+        let mut current_block_num = 0u128;
+        loop {
+            try_mining(duration_between_blocks, &node_start_instant, &mut last_mining_time, &mut current_block_num);
+        }
+    });
 
     let listener = TcpListener::bind(addr).unwrap();
     listener.set_nonblocking(true).expect("We should be on a OS where TCP can be non-blocking");
@@ -119,16 +123,16 @@ fn start_node(mut accounts: &mut HashMap<String, u128>, block_time: &String, add
     }
 }
 
-fn try_mining(duration_between_blocks: Duration, last_mining_time: &mut SystemTime, current_block_num: &mut u128) {
-    let current_time = SystemTime::now();
-    if current_time.duration_since(*last_mining_time).expect("Time should be monotonic") > duration_between_blocks {
+fn try_mining(duration_between_blocks: Duration, node_start_instant: &Instant, last_mining_time: &mut Instant, current_block_num: &mut u128) {
+    let current_time = Instant::now();
+    if current_time.duration_since(*last_mining_time) > duration_between_blocks {
         println!("{:.0?}: created block {} with content: {:#?}",
-                 current_time.duration_since(UNIX_EPOCH).expect("Time should be monotonic"),
+                 current_time.duration_since(*node_start_instant),
                  current_block_num,
                  ""
         );
         *current_block_num += 1;
-        *last_mining_time = SystemTime::now();
+        *last_mining_time = Instant::now();
     }
 }
 
