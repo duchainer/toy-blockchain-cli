@@ -7,39 +7,38 @@ mod tests {
 
     use assertables::{assert_contains, assert_not_contains};
     use assertables::{assert_contains_as_result, assert_not_contains_as_result};
+    use scopeguard::defer;
 
     #[test]
     fn running_with_start_node_keeps_me_running() {
         let minimum_living_time = 2;
-        let node_res = duct::cmd!("cargo", "run", "start_node").start();
-        assert!(node_res.is_ok(), "Failed to run: {:?}", node_res);
-        if let Ok(node) = node_res {
-            sleep(Duration::from_secs(minimum_living_time));
-
-            // assert that it is still running
-            if let Ok(val) = node.try_wait() {
-                assert!(val.is_none(), "The node stopped running under {} seconds", minimum_living_time);
-            }
-
-            // cleanup
+        let node = duct::cmd!("cargo", "run", "start_node").start().expect("We should be able to run start_node");
+        defer! {
+            // cleanup even when we panic and fail the test.
             assert!(node.kill().is_ok());
+         }
+        sleep(Duration::from_secs(minimum_living_time));
+
+        // assert that it is still running
+        if let Ok(val) = node.try_wait() {
+            assert!(val.is_none(), "The node stopped running under {} seconds", minimum_living_time);
         }
     }
 
     #[test]
     fn when_not_using_the_start_node_command_be_short_lived() {
         // This should be running help
-        let node_res = duct::cmd!("cargo", "run").start();
-        assert!(node_res.is_ok(), "Failed to run: {:?}", node_res);
-        if let Ok(node) = node_res {
-            sleep(Duration::from_millis(1500));
-
-            if let Ok(val) = node.try_wait() {
-                if val.is_none() {
-                    assert!(val.is_some(), "It was not done yet?");
-                    let _ = node.kill().is_ok();
-                };
-            }
+        let node = duct::cmd!("cargo", "run").start().expect("We should be able to run start_node");
+        defer! {
+            // cleanup even when we panic and fail the test.
+            assert!(node.kill().is_ok());
+         }
+        sleep(Duration::from_millis(1500));
+        if let Ok(val) = node.try_wait() {
+            if val.is_none() {
+                assert!(val.is_some(), "It was not done yet?");
+                let _ = node.kill().is_ok();
+            };
         }
     }
 
@@ -51,7 +50,8 @@ mod tests {
         let block_time_diff = 2;
         let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time_diff.to_string()).reader();
         let reader = node_res.unwrap();
-        // reader.kill().unwrap();
+        // NOTE: A ReaderHandle is killed when dropped, so we don't need any additional cleanup even when we panic and fail the test.
+        // According to duct docs: https://docs.rs/duct/latest/duct/struct.ReaderHandle.html
 
         // As inspired by https://stackoverflow.com/a/31577297/7243716
         let mut buf_reader = BufReader::new(reader);
@@ -66,7 +66,7 @@ mod tests {
         sleep(Duration::from_secs(block_time_diff));
         if let Ok(_val) = buf_reader.read_line(&mut output) {
             assert_contains!(output, "current_block_num: 0");
-         }
+        }
 
         sleep(Duration::from_secs(block_time_diff));
         if let Ok(_val) = buf_reader.read_line(&mut output) {
@@ -97,6 +97,10 @@ mod tests {
         let balance: u128 = 1000;
         let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time.to_string()).start();
         let node_handle = node_res.expect("The start_node command should work");
+        defer! {
+            // cleanup even when we panic and fail the test.
+            assert!(node_handle.kill().is_ok());
+        }
 
         sleep(Duration::from_secs(block_time));
         sleep(Duration::from_secs(block_time));
@@ -109,7 +113,6 @@ mod tests {
         let account_creation2_output = duct::cmd!("cargo", "run", "create_account", "bob", balance.to_string())
             .read().expect("The create_account command should work");
 
-        assert!(node_handle.kill().is_ok());
         assert_contains!(account_creation2_output , "Already existing account");
     }
 
@@ -119,6 +122,10 @@ mod tests {
         // let balance: u128 = 1000;
         let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time.to_string()).start();
         let node_handle = node_res.expect("The start_node command should work");
+        defer! {
+            // cleanup even when we panic and fail the test.
+            assert!(node_handle.kill().is_ok());
+        }
 
         sleep(Duration::from_secs(block_time));
         sleep(Duration::from_secs(block_time));
@@ -140,7 +147,7 @@ mod tests {
         let balance_output2_before_block =
             duct::cmd!("cargo", "run", "balance", initial_account_names[1])
                 .read().expect("The balance command should work");
-        sleep(Duration::from_secs(block_time+1));
+        sleep(Duration::from_secs(block_time + 1));
 
         let balance_output1_after_block =
             duct::cmd!("cargo", "run", "balance", initial_account_names[0])
@@ -149,7 +156,6 @@ mod tests {
             duct::cmd!("cargo", "run", "balance", initial_account_names[1])
                 .read().expect("The balance command should work");
 
-        assert!(node_handle.kill().is_ok());
         account_creation_outputs.iter().for_each(
             |output| { assert_contains!(output , "Created account"); }
         );
@@ -168,6 +174,10 @@ mod tests {
         let balance: u128 = 1000;
         let node_res = duct::cmd!("cargo", "run", "start_node", "--block-time", block_time.to_string()).start();
         let node_handle = node_res.expect("The start_node command should work");
+        defer! {
+            // cleanup even when we panic and fail the test.
+            assert!(node_handle.kill().is_ok());
+        }
 
         // To be sure that the node is properly started already
         sleep(Duration::from_secs(block_time));
@@ -184,9 +194,6 @@ mod tests {
         let balance_output2 = duct::cmd!("cargo", "run", "balance", "bob")
             .read().expect("The balance command should work");
 
-
-        // cleanup
-        assert!(node_handle.kill().is_ok());
 
         //
         // assertions
